@@ -18,6 +18,9 @@
 #include "ns3/traced-value.h"
 
 #include <optional>
+#include <vector>
+#include <map>
+#include "ns3/random-variable-stream.h"
 
 namespace ns3
 {
@@ -57,6 +60,9 @@ class QosTxop : public Txop
      */
     static TypeId GetTypeId();
 
+    // COVERT_MAC_PATCH: intended per-TXOP budget sequence (real EDCA TXOPs).
+    void ConfigureCovertTxop(std::vector<Time> budgets, double probability, int64_t stream);
+    Time GetCovertBudget(uint8_t linkId) const;
     QosTxop();
     ~QosTxop() override;
 
@@ -459,6 +465,13 @@ class QosTxop : public Txop
     uint16_t m_blockAckInactivityTimeout; //!< the BlockAck inactivity timeout value (in TUs, i.e.
                                           //!< blocks of 1024 microseconds)
     Time m_addBaResponseTimeout;          //!< timeout for ADDBA response
+    std::vector<Time> m_covertBudgets;
+    double m_covertProbability{0.0};
+    size_t m_covertIndex{0};
+    Ptr<UniformRandomVariable> m_covertRv;
+    std::map<uint8_t, Time> m_currentCovertBudget;
+    typedef TracedCallback<Time, Time, uint8_t, bool> CovertBudgetTracedCallback;
+    CovertBudgetTracedCallback m_covertBudgetTrace;
     Time m_failedAddBaTimeout;            //!< timeout after failed BA agreement
     bool m_useExplicitBarAfterMissedBlockAck; //!< flag whether explicit BlockAckRequest should be
                                               //!< sent upon missed BlockAck Response

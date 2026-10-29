@@ -84,6 +84,10 @@ QosTxop::GetTypeId()
                           UintegerValue(1),
                           MakeUintegerAccessor(&QosTxop::m_nMaxInflights),
                           MakeUintegerChecker<uint8_t>(1, 15))
+            .AddTraceSource("CovertBudgetTrace",
+                            "Selected MAC TXOP budget: start, budget, link ID, active",
+                            MakeTraceSourceAccessor(&QosTxop::m_covertBudgetTrace),
+                            "ns3::QosTxop::CovertBudgetTracedCallback")
             .AddTraceSource("TxopTrace",
                             "Trace source for TXOP start and duration times",
                             MakeTraceSourceAccessor(&QosTxop::m_txopTrace),
@@ -605,6 +609,25 @@ QosTxop::AssignSequenceNumber(Ptr<WifiMpdu> mpdu) const
     }
 }
 
+// COVERT_MAC_PATCH: driven by a real EDCA TXOP, not a scheduled UDP send.
+void
+QosTxop::ConfigureCovertTxop(std::vector<Time> budgets, double probability, int64_t stream)
+{
+    NS_ABORT_MSG_IF(probability < 0.0 || probability > 1.0, "Invalid covert probability");
+    m_covertBudgets = std::move(budgets);
+    m_covertProbability = probability;
+    m_covertIndex = 0;
+    m_currentCovertBudget.clear();
+    m_covertRv = CreateObject<UniformRandomVariable>();
+    m_covertRv->SetStream(stream);
+}
+Time
+QosTxop::GetCovertBudget(uint8_t linkId) const
+{
+    auto it = m_currentCovertBudget.find(linkId);
+    return it == m_currentCovertBudget.end() ? GetTxopLimit(linkId) : it->second;
+}
+
 void
 QosTxop::NotifyChannelAccessed(uint8_t linkId, Time txopDuration)
 {
@@ -613,6 +636,18 @@ QosTxop::NotifyChannelAccessed(uint8_t linkId, Time txopDuration)
     NS_ASSERT(txopDuration != Time::Min());
     GetLink(linkId).startTxop = Simulator::Now();
     GetLink(linkId).txopDuration = txopDuration;
+    Time budget = txopDuration;
+    bool active = false;
+    if (txopDuration.IsStrictlyPositive() && !m_covertBudgets.empty() &&
+        m_covertProbability > 0.0 && m_covertRv->GetValue() < m_covertProbability)
+    {
+        // Never exceed regulatory EDCA TXOP limit. Budget is a *maximum*.
+        budget = std::min(txopDuration, m_covertBudgets[m_covertIndex % m_covertBudgets.size()]);
+        ++m_covertIndex;
+        active = true;
+    }
+    m_currentCovertBudget[linkId] = budget;
+    m_covertBudgetTrace(Simulator::Now(), budget, linkId, active);
     Txop::NotifyChannelAccessed(linkId);
 }
 
@@ -658,6 +693,7 @@ QosTxop::NotifyChannelReleased(uint8_t linkId)
         }
     }
     link.startTxop.reset();
+    m_currentCovertBudget.erase(linkId);
     GetLink(linkId).access = NOT_REQUESTED;
 }
 
@@ -667,7 +703,8 @@ QosTxop::GetRemainingTxop(uint8_t linkId) const
     auto& link = GetLink(linkId);
     NS_ASSERT(link.startTxop.has_value());
 
-    Time remainingTxop = link.txopDuration;
+    // Stop admitting additional frame exchanges at the chosen MAC budget.
+    Time remainingTxop = std::min(link.txopDuration, GetCovertBudget(linkId));
     remainingTxop -= (Simulator::Now() - *link.startTxop);
     if (remainingTxop.IsStrictlyNegative())
     {

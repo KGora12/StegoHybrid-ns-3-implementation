@@ -11,7 +11,7 @@ A controller decides in each step whether only the PHY sub-channel is used or wh
 
 ## Repository structure
 
-
+```
 .
 ├── ns3/
 │   ├── scratch/
@@ -30,6 +30,7 @@ A controller decides in each step whether only the PHY sub-channel is used or wh
 │   └── scenario4/data_s4/                       # Scenario 4 simulation results
 ├── LICENSE
 └── README.md
+```
 
 ## Usage
 

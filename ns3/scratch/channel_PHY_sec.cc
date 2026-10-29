@@ -1,24 +1,4 @@
 // QAM-16 stego over 802.11ax (HE MCS3, 20 MHz) with EVM-based noise from SNR
-// Next-generation Dirty Constellation (elliptical covert regions).
-//
-// CORRECTIONS vs. the original channel_s1.cc:
-//   (1) SNR scaling fixed. Noise is now referenced to the real symbol energy
-//       Es of the 16-QAM constellation (Es = 10 for points {+/-1,+/-3}), so
-//       --snrDb is the true Es/N0 in dB and matches channel_s2.cc. The old
-//       code used sigma = 10^(-snr/20)/sqrt2 in absolute units, which made the
-//       effective Es/N0 about 10 dB higher than the --snrDb value.
-//   (2) Covert bits are encrypted per frame (packet) with the paper keystream
-//       (Algorithm 1 / 2) before being embedded, so the embedded content is
-//       whitened. Decoder decrypts with the same per-frame key.
-//   (3) Hidden-BER measurement fixed. Each transmitted symbol now carries a
-//       ground-truth covert flag and its plaintext bits; hidden BER is measured
-//       by per-symbol alignment, and the geometric covert-detector's
-//       robustness (missed / false-positive) is reported separately instead of
-//       a single flat vector that de-synchronises on one insertion.
-//   (4) Optional --dumpAll dumps every RX error vector with a covert flag, for
-//       the external steganalysis / detectability script (detectors.py).
-//
-// Build: copy to scratch/ of an ns-3.44 tree together with stego_crypto.h.
 
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
